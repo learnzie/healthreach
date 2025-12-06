@@ -6,10 +6,10 @@ export const entrySchema = z.object({
   middleName: z.string().min(1, "Middle name is required"),
   surname: z.string().min(1, "Surname is required"),
   gender: z.enum(["male", "female"], {
-    errorMap: () => ({ message: "Gender must be male or female" }),
+    message: "Gender must be male or female",
   }),
   maritalStatus: z.enum(["single", "married", "divorced", "widowed"], {
-    errorMap: () => ({ message: "Invalid marital status" }),
+    message: "Marital status must be single, married, divorced or widowed",
   }),
   religion: z.string().min(1, "Religion is required"),
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
@@ -74,9 +74,33 @@ export const authCredentialsSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+// User creation schema
+export const createUserSchema = z.object({
+  email: z.email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  name: z.string().optional().nullable(),
+});
+
+// User update schema (password is optional)
+export const updateUserSchema = z.object({
+  email: z.string().email("Invalid email address").optional(),
+  password: z.string().min(6, "Password must be at least 6 characters").optional(),
+  name: z.string().optional().nullable(),
+});
+
+// User query parameters schema
+export const userQuerySchema = z.object({
+  page: z.string().optional().transform((val) => (val ? parseInt(val) : 1)),
+  limit: z.string().optional().transform((val) => (val ? parseInt(val) : 50)),
+  search: z.string().optional(),
+});
+
 export type EntryInput = z.infer<typeof entrySchema>;
 export type EntryQuery = z.infer<typeof entryQuerySchema>;
 export type StatsQuery = z.infer<typeof statsQuerySchema>;
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type AuthCredentials = z.infer<typeof authCredentialsSchema>;
+export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type UserQuery = z.infer<typeof userQuerySchema>;
 

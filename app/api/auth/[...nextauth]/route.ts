@@ -31,14 +31,19 @@ export const authOptions: NextAuthOptions = {
           where: { email: validationResult.data.email },
         });
 
+        console.log("User: ", user);
+
         if (!user) {
           return null;
         }
+        console.log("ComingPassword: ", validationResult.data.password);
+        console.log("UserPassword: ", user.password);
 
         const isPasswordValid = await bcrypt.compare(
           validationResult.data.password,
           user.password
         );
+        console.log("IsPasswordValid: ", isPasswordValid);
 
         if (!isPasswordValid) {
           return null;
