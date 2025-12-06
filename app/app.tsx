@@ -1,145 +1,253 @@
 "use client";
-import React, { useState } from "react";
-import { Eye, EyeOff, UserPlus, Users, LogOut } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import {
+  Eye,
+  EyeOff,
+  UserPlus,
+  Users,
+  LogOut,
+  BarChart3,
+  Search,
+} from "lucide-react";
 
 // Types
-interface User {
+interface Entry {
   id: string;
   firstName: string;
   middleName: string;
   surname: string;
-  nin: string;
-  email: string;
   gender: string;
   maritalStatus: string;
   religion: string;
   dateOfBirth: string;
-  homeTown: string;
-  tribe: string;
-  ethnicGroup: string;
-  nationality: string;
-  stateOfOrigin: string;
-  address: string;
   phoneNumber: string;
   occupation: string;
-  employerName: string;
-  nextOfKinName: string;
-  nokPhoneNumber: string;
-  nokAddress: string;
+  bp?: string | null;
+  temp?: number | null;
+  weight?: number | null;
+  diagnosis?: string | null;
+  treatment?: string | null;
+  createdBy?: {
+    id: string;
+    email: string;
+    name?: string | null;
+  };
+  createdAt: string;
 }
 
-interface AuthUser {
+interface AuthForm {
   email: string;
   password: string;
 }
 
+interface EntryForm {
+  firstName: string;
+  middleName: string;
+  surname: string;
+  gender: string;
+  maritalStatus: string;
+  religion: string;
+  dateOfBirth: string;
+  phoneNumber: string;
+  occupation: string;
+  bp: string;
+  temp: string;
+  weight: string;
+  diagnosis: string;
+  treatment: string;
+}
+
 export const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [currentView, setCurrentView] = useState<
-    "login" | "addUser" | "viewUsers"
-  >("login");
-  const [users, setUsers] = useState<User[]>([]);
+    "addEntry" | "viewEntries" | "dashboard"
+  >("addEntry");
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Auth form state
-  const [authForm, setAuthForm] = useState<AuthUser>({
+  const [authForm, setAuthForm] = useState<AuthForm>({
     email: "",
     password: "",
   });
 
-  // User form state
-  const [userForm, setUserForm] = useState<Partial<User>>({
+  // Entry form state
+  const [entryForm, setEntryForm] = useState<EntryForm>({
     firstName: "",
     middleName: "",
     surname: "",
-    nin: "",
-    email: "",
     gender: "male",
     maritalStatus: "",
     religion: "",
     dateOfBirth: "",
-    homeTown: "",
-    tribe: "",
-    ethnicGroup: "",
-    nationality: "",
-    stateOfOrigin: "",
-    address: "",
     phoneNumber: "",
     occupation: "",
-    employerName: "",
-    nextOfKinName: "",
-    nokPhoneNumber: "",
-    nokAddress: "",
+    bp: "",
+    temp: "",
+    weight: "",
+    diagnosis: "",
+    treatment: "",
   });
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Simple validation (in production, validate against backend)
-    if (authForm.email && authForm.password) {
-      setIsAuthenticated(true);
-      setCurrentView("addUser");
+  // Fetch entries
+  const fetchEntries = async (page: number = 1) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/entries?page=${page}&limit=20`);
+      if (!response.ok) throw new Error("Failed to fetch entries");
+      const data = await response.json();
+      setEntries(data.entries || []);
+      setPagination(data.pagination || null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch entries");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentView("login");
-    setAuthForm({ email: "", password: "" });
-  };
+  useEffect(() => {
+    if (session && currentView === "viewEntries") {
+      fetchEntries(currentPage);
+    }
+  }, [session, currentView, currentPage]);
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newUser: User = {
-      id: Date.now().toString(),
-      ...(userForm as User),
-    };
-    setUsers([...users, newUser]);
-    // Reset form
-    setUserForm({
-      firstName: "",
-      middleName: "",
-      surname: "",
-      nin: "",
-      email: "",
-      gender: "male",
-      maritalStatus: "",
-      religion: "",
-      dateOfBirth: "",
-      homeTown: "",
-      tribe: "",
-      ethnicGroup: "",
-      nationality: "",
-      stateOfOrigin: "",
-      address: "",
-      phoneNumber: "",
-      occupation: "",
-      employerName: "",
-      nextOfKinName: "",
-      nokPhoneNumber: "",
-      nokAddress: "",
-    });
-    alert("User added successfully!");
+    setError(null);
+    setLoading(true);
+
+    try {
+      const result = await signIn("credentials", {
+        email: authForm.email,
+        password: authForm.password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError("Invalid email or password");
+      } else {
+        setCurrentView("addEntry");
+      }
+    } catch (err) {
+      console.error("Login failed:", err);
+      setError("Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleViewUser = (user: User) => {
-    setSelectedUser(user);
+  const handleLogout = async () => {
+    await signOut({ redirect: false });
+    setCurrentView("addEntry");
+    setEntries([]);
   };
+
+  const handleAddEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/entries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(entryForm),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to create entry");
+      }
+
+      const newEntry = await response.json();
+      console.log("New entry:", newEntry);
+      setSuccess("Entry added successfully!");
+      setEntryForm({
+        firstName: "",
+        middleName: "",
+        surname: "",
+        gender: "male",
+        maritalStatus: "",
+        religion: "",
+        dateOfBirth: "",
+        phoneNumber: "",
+        occupation: "",
+        bp: "",
+        temp: "",
+        weight: "",
+        diagnosis: "",
+        treatment: "",
+      });
+
+      // Refresh entries list if on that view
+      if (currentView === "viewEntries") {
+        fetchEntries();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add entry");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredEntries = entries.filter((entry) => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      entry.firstName.toLowerCase().includes(search) ||
+      entry.middleName.toLowerCase().includes(search) ||
+      entry.surname.toLowerCase().includes(search) ||
+      entry.phoneNumber.includes(search) ||
+      entry.occupation.toLowerCase().includes(search)
+    );
+  });
+
+  // Show loading state while checking session
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
 
   // Login Screen
-  if (!isAuthenticated) {
+  if (!session) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
               <Users className="w-8 h-8 text-indigo-600" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-800">Welcome Back</h1>
+            <h1 className="text-3xl font-bold text-gray-800">HealthReach</h1>
             <p className="text-gray-600 mt-2">
-              Sign in to access the user management system
+              Sign in to access the outreach management system
             </p>
           </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
@@ -189,9 +297,10 @@ export const App: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
+              disabled={loading}
+              className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign In
+              {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
         </div>
@@ -209,31 +318,44 @@ export const App: React.FC = () => {
             <div className="flex items-center space-x-4">
               <Users className="w-8 h-8 text-indigo-600" />
               <span className="text-xl font-bold text-gray-800">
-                User Management
+                HealthReach
               </span>
             </div>
             <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">
+                {session.user?.email}
+              </span>
               <button
-                onClick={() => setCurrentView("addUser")}
+                onClick={() => setCurrentView("addEntry")}
                 className={`px-4 py-2 rounded-lg font-medium transition ${
-                  currentView === "addUser"
+                  currentView === "addEntry"
                     ? "bg-indigo-100 text-indigo-700"
                     : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
                 <UserPlus className="w-5 h-5 inline mr-2" />
-                Add User
+                Add Entry
               </button>
               <button
-                onClick={() => setCurrentView("viewUsers")}
+                onClick={() => {
+                  setCurrentView("viewEntries");
+                  fetchEntries();
+                }}
                 className={`px-4 py-2 rounded-lg font-medium transition ${
-                  currentView === "viewUsers"
+                  currentView === "viewEntries"
                     ? "bg-indigo-100 text-indigo-700"
                     : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
                 <Users className="w-5 h-5 inline mr-2" />
-                View Users ({users.length})
+                View Entries ({entries.length})
+              </button>
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="px-4 py-2 rounded-lg font-medium transition text-gray-600 hover:bg-gray-100"
+              >
+                <BarChart3 className="w-5 h-5 inline mr-2" />
+                Dashboard
               </button>
               <button
                 onClick={handleLogout}
@@ -247,14 +369,27 @@ export const App: React.FC = () => {
         </div>
       </nav>
 
-      {/* Add User Form */}
-      {currentView === "addUser" && (
+      {/* Add Entry Form */}
+      {currentView === "addEntry" && (
         <div className="max-w-4xl mx-auto p-6">
           <div className="bg-white rounded-xl shadow-md p-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">
-              Add New User
+              Add New Entry
             </h2>
-            <form onSubmit={handleAddUser} className="space-y-6">
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+                {success}
+              </div>
+            )}
+
+            <form onSubmit={handleAddEntry} className="space-y-6">
               {/* Personal Information */}
               <div className="border-b border-gray-200 pb-4">
                 <h3 className="text-lg font-semibold text-gray-700 mb-4">
@@ -268,9 +403,12 @@ export const App: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={userForm.firstName}
+                      value={entryForm.firstName}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, firstName: e.target.value })
+                        setEntryForm({
+                          ...entryForm,
+                          firstName: e.target.value,
+                        })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
@@ -282,9 +420,12 @@ export const App: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={userForm.middleName}
+                      value={entryForm.middleName}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, middleName: e.target.value })
+                        setEntryForm({
+                          ...entryForm,
+                          middleName: e.target.value,
+                        })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
@@ -296,78 +437,9 @@ export const App: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={userForm.surname}
+                      value={entryForm.surname}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, surname: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Identification & Contact */}
-              <div className="border-b border-gray-200 pb-4">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4">
-                  Identification & Contact
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      NIN
-                    </label>
-                    <input
-                      type="text"
-                      value={userForm.nin}
-                      onChange={(e) =>
-                        setUserForm({ ...userForm, nin: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={userForm.email}
-                      onChange={(e) =>
-                        setUserForm({ ...userForm, email: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone Number <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={userForm.phoneNumber}
-                      onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          phoneNumber: e.target.value,
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Date of Birth <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={userForm.dateOfBirth}
-                      onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          dateOfBirth: e.target.value,
-                        })
+                        setEntryForm({ ...entryForm, surname: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
@@ -387,9 +459,9 @@ export const App: React.FC = () => {
                     </label>
                     <select
                       required
-                      value={userForm.gender}
+                      value={entryForm.gender}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, gender: e.target.value })
+                        setEntryForm({ ...entryForm, gender: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     >
@@ -403,10 +475,10 @@ export const App: React.FC = () => {
                     </label>
                     <select
                       required
-                      value={userForm.maritalStatus}
+                      value={entryForm.maritalStatus}
                       onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
+                        setEntryForm({
+                          ...entryForm,
                           maritalStatus: e.target.value,
                         })
                       }
@@ -426,108 +498,44 @@ export const App: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={userForm.religion}
+                      value={entryForm.religion}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, religion: e.target.value })
+                        setEntryForm({ ...entryForm, religion: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Home Town
+                      Date of Birth <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="text"
-                      value={userForm.homeTown}
-                      onChange={(e) =>
-                        setUserForm({ ...userForm, homeTown: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Tribe
-                    </label>
-                    <input
-                      type="text"
-                      value={userForm.tribe}
-                      onChange={(e) =>
-                        setUserForm({ ...userForm, tribe: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Ethnic Group
-                    </label>
-                    <input
-                      type="text"
-                      value={userForm.ethnicGroup}
-                      onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          ethnicGroup: e.target.value,
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nationality
-                    </label>
-                    <input
-                      type="text"
-                      value={userForm.nationality}
-                      onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          nationality: e.target.value,
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      State of Origin <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
+                      type="date"
                       required
-                      value={userForm.stateOfOrigin}
+                      value={entryForm.dateOfBirth}
                       onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          stateOfOrigin: e.target.value,
+                        setEntryForm({
+                          ...entryForm,
+                          dateOfBirth: e.target.value,
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
                   </div>
-                </div>
-              </div>
-
-              {/* Address & Employment */}
-              <div className="border-b border-gray-200 pb-4">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4">
-                  Address & Employment
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Address <span className="text-red-500">*</span>
+                      Phone Number <span className="text-red-500">*</span>
                     </label>
-                    <textarea
+                    <input
+                      type="tel"
                       required
-                      value={userForm.address}
+                      value={entryForm.phoneNumber}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, address: e.target.value })
+                        setEntryForm({
+                          ...entryForm,
+                          phoneNumber: e.target.value,
+                        })
                       }
-                      rows={3}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
                   </div>
@@ -538,24 +546,11 @@ export const App: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={userForm.occupation}
+                      value={entryForm.occupation}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, occupation: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Employer Name
-                    </label>
-                    <input
-                      type="text"
-                      value={userForm.employerName}
-                      onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          employerName: e.target.value,
+                        setEntryForm({
+                          ...entryForm,
+                          occupation: e.target.value,
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
@@ -564,54 +559,96 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Next of Kin */}
+              {/* Health Metrics */}
+              <div className="border-b border-gray-200 pb-4">
+                <h3 className="text-lg font-semibold text-gray-700 mb-4">
+                  Health Metrics
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Blood Pressure
+                    </label>
+                    <input
+                      type="text"
+                      value={entryForm.bp}
+                      onChange={(e) =>
+                        setEntryForm({ ...entryForm, bp: e.target.value })
+                      }
+                      placeholder="e.g., 120/80"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Temperature (°C)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={entryForm.temp}
+                      onChange={(e) =>
+                        setEntryForm({ ...entryForm, temp: e.target.value })
+                      }
+                      placeholder="e.g., 36.5"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Weight (kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={entryForm.weight}
+                      onChange={(e) =>
+                        setEntryForm({ ...entryForm, weight: e.target.value })
+                      }
+                      placeholder="e.g., 70.5"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Medical Information */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-4">
-                  Next of Kin Information
+                  Medical Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Next of Kin Name
+                      Diagnosis
                     </label>
-                    <input
-                      type="text"
-                      value={userForm.nextOfKinName}
+                    <textarea
+                      value={entryForm.diagnosis}
                       onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          nextOfKinName: e.target.value,
+                        setEntryForm({
+                          ...entryForm,
+                          diagnosis: e.target.value,
                         })
                       }
+                      rows={3}
+                      placeholder="Enter diagnosis"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      NOK Phone Number
-                    </label>
-                    <input
-                      type="tel"
-                      value={userForm.nokPhoneNumber}
-                      onChange={(e) =>
-                        setUserForm({
-                          ...userForm,
-                          nokPhoneNumber: e.target.value,
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      NOK Address
+                      Treatment
                     </label>
                     <textarea
-                      value={userForm.nokAddress}
+                      value={entryForm.treatment}
                       onChange={(e) =>
-                        setUserForm({ ...userForm, nokAddress: e.target.value })
+                        setEntryForm({
+                          ...entryForm,
+                          treatment: e.target.value,
+                        })
                       }
                       rows={3}
+                      placeholder="Enter treatment"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
                   </div>
@@ -622,28 +659,21 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() =>
-                    setUserForm({
+                    setEntryForm({
                       firstName: "",
                       middleName: "",
                       surname: "",
-                      nin: "",
-                      email: "",
                       gender: "male",
                       maritalStatus: "",
                       religion: "",
                       dateOfBirth: "",
-                      homeTown: "",
-                      tribe: "",
-                      ethnicGroup: "",
-                      nationality: "",
-                      stateOfOrigin: "",
-                      address: "",
                       phoneNumber: "",
                       occupation: "",
-                      employerName: "",
-                      nextOfKinName: "",
-                      nokPhoneNumber: "",
-                      nokAddress: "",
+                      bp: "",
+                      temp: "",
+                      weight: "",
+                      diagnosis: "",
+                      treatment: "",
                     })
                   }
                   className="px-6 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition"
@@ -652,9 +682,10 @@ export const App: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition shadow-lg"
+                  disabled={loading}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Add User
+                  {loading ? "Adding..." : "Add Entry"}
                 </button>
               </div>
             </form>
@@ -662,108 +693,116 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* View Users */}
-      {currentView === "viewUsers" && (
+      {/* View Entries */}
+      {currentView === "viewEntries" && (
         <div className="max-w-7xl mx-auto p-6">
           <div className="bg-white rounded-xl shadow-md p-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">
-              Registered Users
-            </h2>
-            {users.length === 0 ? (
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">
+                Registered Entries
+              </h2>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Search entries..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-12 text-gray-500">Loading...</div>
+            ) : filteredEntries.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">No users registered yet</p>
+                <p className="text-lg">
+                  {searchTerm
+                    ? "No entries match your search"
+                    : "No entries registered yet"}
+                </p>
                 <button
-                  onClick={() => setCurrentView("addUser")}
+                  onClick={() => setCurrentView("addEntry")}
                   className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
                 >
-                  Add First User
+                  Add First Entry
                 </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {users.map((user) => (
-                  <div
-                    key={user.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition cursor-pointer"
-                    onClick={() => handleViewUser(user)}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-800">
-                          {user.firstName} {user.middleName} {user.surname}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {user.email || "No email"} • {user.phoneNumber}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {user.occupation} • {user.stateOfOrigin}
-                        </p>
+              <>
+                <div className="space-y-4">
+                  {filteredEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800">
+                            {entry.firstName} {entry.middleName} {entry.surname}
+                          </h3>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {entry.phoneNumber} • {entry.occupation}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {entry.gender} • {entry.maritalStatus} •{" "}
+                            {entry.religion}
+                          </p>
+                          {entry.diagnosis && (
+                            <p className="text-sm text-blue-600 mt-1">
+                              Diagnosis: {entry.diagnosis}
+                            </p>
+                          )}
+                          {entry.createdBy && (
+                            <p className="text-xs text-gray-400 mt-2">
+                              Created by:{" "}
+                              {entry.createdBy.name || entry.createdBy.email}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewUser(user);
-                        }}
-                        className="px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                      >
-                        View Details
-                      </button>
                     </div>
+                  ))}
+                </div>
+                {pagination && pagination.totalPages > 1 && (
+                  <div className="mt-6 flex justify-center items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (currentPage > 1) {
+                          setCurrentPage(currentPage - 1);
+                          setSearchTerm(""); // Clear search when paginating
+                        }
+                      }}
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-gray-600">
+                      Page {currentPage} of {pagination.totalPages} (
+                      {pagination.total} total)
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (currentPage < pagination.totalPages) {
+                          setCurrentPage(currentPage + 1);
+                          setSearchTerm(""); // Clear search when paginating
+                        }
+                      }}
+                      disabled={currentPage === pagination.totalPages}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         </div>
       )}
-
-      {/* User Details Modal */}
-      {/* {selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-800">User Details</h2>
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-6 space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Personal Information</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="font-medium">First Name:</span> {selectedUser.firstName}</div>
-                  <div><span className="font-medium">Middle Name:</span> {selectedUser.middleName}</div>
-                  <div><span className="font-medium">Surname:</span> {selectedUser.surname}</div>
-                  <div><span className="font-medium">NIN:</span> {selectedUser.nin || 'N/A'}</div>
-                  <div><span className="font-medium">Email:</span> {selectedUser.email || 'N/A'}</div>
-                  <div><span className="font-medium">Phone:</span> {selectedUser.phoneNumber}</div>
-                  <div><span className="font-medium">Date of Birth:</span> {selectedUser.dateOfBirth}</div>
-                  <div><span className="font-medium">Gender:</span> {selectedUser.gender}</div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Demographics</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="font-medium">Marital Status:</span> {selectedUser.maritalStatus}</div>
-                  <div><span className="font-medium">Religion:</span> {selectedUser.religion}</div>
-                  <div><span className="font-medium">Home Town:</span> {selectedUser.homeTown || 'N/A'}</div>
-                  <div><span className="font-medium">Tribe:</span> {selectedUser.tribe || 'N/A'}</div>
-                  <div><span className="font-medium">Ethnic Group:</span> {selectedUser.ethnicGroup || 'N/A'}</div>
-                  <div><span className="font-medium">Nationality:</span> {selectedUser.nationality || 'N/A'}</div>
-                  <div><span className="font-medium">State of Origin:</span> {selectedUser.stateOfOrigin}</div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Address & Employment</h3>
-                <div className="space-y-2 text-sm">
-                  <div><span className="font-medium">Address:</span> {selectedUser.address}</div>
-                  <div><span className="font-medium"></span> */}
     </div>
   );
 };
