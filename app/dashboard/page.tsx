@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import {
   BarChart,
@@ -70,9 +71,6 @@ const COLORS = [
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
-  const [stats, setStats] = useState<StatsData | null>(null);
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -81,48 +79,44 @@ export default function DashboardPage() {
     treatment: "",
   });
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Build query params for filters
+  const queryParams = new URLSearchParams();
+  if (filters.gender) queryParams.append("gender", filters.gender);
+  if (filters.diagnosis) queryParams.append("diagnosis", filters.diagnosis);
+  if (filters.treatment) queryParams.append("treatment", filters.treatment);
 
-      const queryParams = new URLSearchParams();
-      if (filters.gender) queryParams.append("gender", filters.gender);
-      if (filters.diagnosis) queryParams.append("diagnosis", filters.diagnosis);
-      if (filters.treatment) queryParams.append("treatment", filters.treatment);
+  // SWR fetcher
+  const fetcher = (url: string) =>
+    fetch(url).then((r) => {
+      if (!r.ok) throw new Error("Failed to fetch data");
+      return r.json();
+    });
 
-      const [statsRes, analyticsRes] = await Promise.all([
-        fetch(`/api/entries/stats?${queryParams.toString()}`),
-        fetch(`/api/entries/analytics?${queryParams.toString()}`),
-      ]);
+  const {
+    data: stats,
+    error: statsError,
+    isLoading: statsLoading,
+    mutate: mutateStats,
+  } = useSWR<StatsData>(
+    session ? `/api/entries/stats?${queryParams.toString()}` : null,
+    fetcher
+  );
+  const {
+    data: analytics,
+    error: analyticsError,
+    isLoading: analyticsLoading,
+    mutate: mutateAnalytics,
+  } = useSWR<AnalyticsData>(
+    session ? `/api/entries/analytics?${queryParams.toString()}` : null,
+    fetcher
+  );
 
-      if (!statsRes.ok || !analyticsRes.ok) {
-        throw new Error("Failed to fetch data");
-      }
-
-      const [statsData, analyticsData] = await Promise.all([
-        statsRes.json(),
-        analyticsRes.json(),
-      ]);
-
-      setStats(statsData);
-      setAnalytics(analyticsData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (session) {
-      fetchData();
-    }
-  }, [session, filters]);
+  const loading = statsLoading || analyticsLoading;
+  const swrError = statsError || analyticsError;
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-medium">Loading...</p>
@@ -133,7 +127,7 @@ export default function DashboardPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md">
           <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <BarChart3 className="w-8 h-8 text-indigo-600" />
@@ -151,7 +145,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-medium">Loading dashboard data...</p>
@@ -160,14 +154,18 @@ export default function DashboardPage() {
     );
   }
 
-  if (error) {
+  if (swrError || error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md border-l-4 border-red-500">
           <h2 className="text-2xl font-bold text-red-600 mb-2">Error</h2>
-          <p className="text-gray-700">{error}</p>
+          <p className="text-gray-700">{swrError?.message || error}</p>
           <button
-            onClick={() => fetchData()}
+            onClick={() => {
+              mutateStats();
+              mutateAnalytics();
+              setError(null);
+            }}
             className="mt-4 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
           >
             Try Again
@@ -178,17 +176,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4 md:p-8">
+    <div className="min-h-screen bg-linear-to-br from-indigo-50 via-white to-purple-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-12 h-12 bg-linear-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
                   <BarChart3 className="w-6 h-6 text-white" />
                 </div>
-                <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
                   Analytics Dashboard
                 </h1>
               </div>
@@ -201,7 +199,7 @@ export default function DashboardPage() {
               className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 shadow-lg ${
                 showFilters
                   ? "bg-white text-indigo-600 border-2 border-indigo-600"
-                  : "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-xl hover:scale-105"
+                  : "bg-linear-to-r from-indigo-600 to-purple-600 text-white hover:shadow-xl hover:scale-105"
               }`}
             >
               <Filter className="w-5 h-5" />
@@ -364,7 +362,7 @@ export default function DashboardPage() {
             {/* Age Distribution */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-8 bg-gradient-to-b from-indigo-600 to-purple-600 rounded-full"></div>
+                <div className="w-2 h-8 bg-linear-to-b from-indigo-600 to-purple-600 rounded-full"></div>
                 <h2 className="text-xl font-bold text-gray-800">
                   Age Distribution
                 </h2>
@@ -401,7 +399,7 @@ export default function DashboardPage() {
             {/* Gender Distribution */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-8 bg-gradient-to-b from-purple-600 to-pink-600 rounded-full"></div>
+                <div className="w-2 h-8 bg-linear-to-b from-purple-600 to-pink-600 rounded-full"></div>
                 <h2 className="text-xl font-bold text-gray-800">
                   Gender Distribution
                 </h2>
@@ -444,7 +442,7 @@ export default function DashboardPage() {
             {/* Diagnosis Distribution */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-8 bg-gradient-to-b from-pink-600 to-rose-600 rounded-full"></div>
+                <div className="w-2 h-8 bg-linear-to-b from-pink-600 to-rose-600 rounded-full"></div>
                 <h2 className="text-xl font-bold text-gray-800">
                   Diagnosis Distribution
                 </h2>
@@ -492,7 +490,7 @@ export default function DashboardPage() {
             {/* Treatment Distribution */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-8 bg-gradient-to-b from-amber-600 to-orange-600 rounded-full"></div>
+                <div className="w-2 h-8 bg-linear-to-b from-amber-600 to-orange-600 rounded-full"></div>
                 <h2 className="text-xl font-bold text-gray-800">
                   Treatment Distribution
                 </h2>
@@ -541,7 +539,7 @@ export default function DashboardPage() {
             {analytics.bpVsAge.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
                 <div className="flex items-center gap-2 mb-6">
-                  <div className="w-2 h-8 bg-gradient-to-b from-emerald-600 to-teal-600 rounded-full"></div>
+                  <div className="w-2 h-8 bg-linear-to-b from-emerald-600 to-teal-600 rounded-full"></div>
                   <h2 className="text-xl font-bold text-gray-800">
                     Blood Pressure vs Age
                   </h2>
@@ -604,7 +602,7 @@ export default function DashboardPage() {
             {analytics.weightVsAge.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
                 <div className="flex items-center gap-2 mb-6">
-                  <div className="w-2 h-8 bg-gradient-to-b from-cyan-600 to-blue-600 rounded-full"></div>
+                  <div className="w-2 h-8 bg-linear-to-b from-cyan-600 to-blue-600 rounded-full"></div>
                   <h2 className="text-xl font-bold text-gray-800">
                     Weight vs Age
                   </h2>
@@ -667,7 +665,7 @@ export default function DashboardPage() {
             {/* Marital Status Distribution */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-8 bg-gradient-to-b from-violet-600 to-purple-600 rounded-full"></div>
+                <div className="w-2 h-8 bg-linear-to-b from-violet-600 to-purple-600 rounded-full"></div>
                 <h2 className="text-xl font-bold text-gray-800">
                   Marital Status Distribution
                 </h2>
@@ -708,7 +706,7 @@ export default function DashboardPage() {
             {/* Religion Distribution */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-8 bg-gradient-to-b from-rose-600 to-pink-600 rounded-full"></div>
+                <div className="w-2 h-8 bg-linear-to-b from-rose-600 to-pink-600 rounded-full"></div>
                 <h2 className="text-xl font-bold text-gray-800">
                   Religion Distribution
                 </h2>
