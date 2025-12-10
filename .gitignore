@@ -47,3 +47,4 @@ dev.db
 prisma/dev.db
 
 /app/generated/prisma
+package-lock.json

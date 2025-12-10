@@ -17,8 +17,6 @@ import {
   ResponsiveContainer,
   ScatterChart,
   Scatter,
-  LineChart,
-  Line,
 } from "recharts";
 import {
   BarChart3,
