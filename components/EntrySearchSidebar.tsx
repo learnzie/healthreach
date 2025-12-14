@@ -74,12 +74,13 @@ export const EntrySearchSidebar: React.FC<EntrySearchSidebarProps> = ({
       )}
 
       {/* Sidebar */}
-      <aside
+      <div
         className={`
-          fixed top-0 left-64 h-full bg-white border-r border-gray-200 shadow-lg z-30
+          fixed top-0 h-full bg-white border-r border-gray-200 shadow-lg z-30
           transform transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
-          w-80
+          left-0 w-full
+          lg:left-64 lg:w-80
         `}
       >
         <div className="flex flex-col h-full">
@@ -147,7 +148,7 @@ export const EntrySearchSidebar: React.FC<EntrySearchSidebarProps> = ({
             )}
           </div>
         </div>
-      </aside>
+      </div>
 
       {/* Spacer for desktop - only when open */}
       {isOpen && <div className="hidden lg:block w-80" />}

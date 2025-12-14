@@ -293,12 +293,12 @@ export const App: React.FC = () => {
         }}
       />
 
-      <div className="flex-1 lg:ml-0">
+      <div className="flex-1 lg:ml-0 w-full">
         {/* Add Entry Form */}
 
         <div className="max-w-4xl mx-auto p-6">
           <div className="bg-white rounded-xl shadow-md p-8">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex sm:flex-row flex-col sm:justify-between gap-4 justify-start sm:items-center items-start mb-6">
               <h2 className="text-2xl font-bold text-gray-800">
                 {entryForm.id ? "Edit Entry" : "Add New Entry"}
               </h2>
