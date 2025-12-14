@@ -3,14 +3,16 @@ import { prisma } from "../lib/prisma";
 import bcrypt from "bcryptjs";
 
 async function main() {
-  const email = process.env.ADMIN_EMAIL || "admin@healthreach.com";
-  const password = process.env.ADMIN_PASSWORD || "admin123";
+  const email = process.env.ADMIN_EMAIL!;
+  const password = process.env.ADMIN_PASSWORD!;
   const name = process.env.ADMIN_NAME || "Admin User";
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.upsert({
     where: { email },
-    update: {},
+    update: {
+      role: "admin"
+    },
     create: {
       email,
       password: hashedPassword,

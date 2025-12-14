@@ -2,67 +2,197 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
-import { entrySchema, entryQuerySchema } from "@/lib/validations";
+import { entryQuerySchema, demographicEntrySchema, healthEntrySchema, medicalEntrySchema } from "@/lib/validations";
 import { Prisma } from "@prisma/client";
+import { canEditDemographics, canEditHealth, canEditMedical } from "@/lib/auth-helpers";
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.role) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
+    const userRole = session.user.role as "admin" | "user" | "doctor" | "nurse";
 
-    // Validate with Zod
-    const validationResult = entrySchema.safeParse(body);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          error: "Validation failed",
-          details: validationResult.error.issues.map((issue) => ({
-            field: issue.path.join("."),
-            message: issue.message,
-          })),
-        },
-        { status: 400 }
-      );
-    }
+    // Check if this is an update (has id) or create
+    const entryId = body.id;
 
-    const validatedData = validationResult.data;
+    if (entryId) {
+      // Update existing entry
+      const existingEntry = await prisma.entry.findUnique({
+        where: { id: entryId },
+      });
 
-    const entry = await prisma.entry.create({
-      data: {
-        firstName: validatedData.firstName,
-        middleName: validatedData.middleName,
-        surname: validatedData.surname,
-        gender: validatedData.gender,
-        maritalStatus: validatedData.maritalStatus,
-        religion: validatedData.religion,
-        dateOfBirth: new Date(validatedData.dateOfBirth),
-        phoneNumber: validatedData.phoneNumber,
-        occupation: validatedData.occupation,
-        bp: validatedData.bp || null,
-        temp: validatedData.temp,
-        weight: validatedData.weight,
-        diagnosis: validatedData.diagnosis || null,
-        treatment: validatedData.treatment || null,
-        createdById: session.user.id,
-      },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
+      if (!existingEntry) {
+        return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+      }
+
+      // Build update data based on role
+      const updateData: Prisma.EntryUpdateInput = {};
+
+      // Demographic fields
+      if (canEditDemographics(userRole)) {
+        const demographicResult = demographicEntrySchema.safeParse(body);
+        if (demographicResult.success) {
+          const data = demographicResult.data;
+          updateData.firstName = data.firstName;
+          updateData.middleName = data.middleName;
+          updateData.surname = data.surname;
+          updateData.gender = data.gender;
+          updateData.maritalStatus = data.maritalStatus;
+          updateData.religion = data.religion;
+          updateData.dateOfBirth = new Date(data.dateOfBirth);
+          updateData.phoneNumber = data.phoneNumber;
+          updateData.occupation = data.occupation;
+          updateData.demographicCreatedBy = { connect: { id: session.user.id } };
+        }
+      }
+
+      // Health fields
+      if (canEditHealth(userRole)) {
+        const healthResult = healthEntrySchema.safeParse(body);
+        if (healthResult.success) {
+          const data = healthResult.data;
+          updateData.bp = data.bp || null;
+          updateData.temp = data.temp;
+          updateData.weight = data.weight;
+          updateData.healthCreatedBy = {connect: {id: session.user.id}};
+        }
+      }
+
+      // Medical fields
+      if (canEditMedical(userRole)) {
+        const medicalResult = medicalEntrySchema.safeParse(body);
+        if (medicalResult.success) {
+          const data = medicalResult.data;
+          updateData.diagnosis = data.diagnosis || null;
+          updateData.treatment = data.treatment || null;
+          updateData.medicalCreatedBy = {connect: {id: session.user.id}};
+        }
+      }
+
+      const entry = await prisma.entry.update({
+        where: { id: entryId },
+        data: updateData,
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          demographicCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          healthCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          medicalCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    return NextResponse.json(entry, { status: 201 });
+      return NextResponse.json(entry, { status: 200 });
+    } else {
+      // Create new entry - must have at least demographic data
+      if (!canEditDemographics(userRole)) {
+        return NextResponse.json(
+          { error: "You do not have permission to create entries" },
+          { status: 403 }
+        );
+      }
+
+      const demographicResult = demographicEntrySchema.safeParse(body);
+      if (!demographicResult.success) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: demographicResult.error.issues.map((issue) => ({
+              field: issue.path.join("."),
+              message: issue.message,
+            })),
+          },
+          { status: 400 }
+        );
+      }
+
+      const demographicData = demographicResult.data;
+      const healthData = canEditHealth(userRole) ? healthEntrySchema.safeParse(body).data : null;
+      const medicalData = canEditMedical(userRole) ? medicalEntrySchema.safeParse(body).data : null;
+
+      const entry = await prisma.entry.create({
+        data: {
+          firstName: demographicData.firstName,
+          middleName: demographicData.middleName,
+          surname: demographicData.surname,
+          gender: demographicData.gender,
+          maritalStatus: demographicData.maritalStatus,
+          religion: demographicData.religion,
+          dateOfBirth: new Date(demographicData.dateOfBirth),
+          phoneNumber: demographicData.phoneNumber,
+          occupation: demographicData.occupation,
+          bp: healthData?.bp || null,
+          temp: healthData?.temp || null,
+          weight: healthData?.weight || null,
+          diagnosis: medicalData?.diagnosis || null,
+          treatment: medicalData?.treatment || null,
+          createdById: session.user.id,
+          demographicCreatedById: session.user.id,
+          healthCreatedById: healthData ? session.user.id : null,
+          medicalCreatedById: medicalData ? session.user.id : null,
+        },
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          demographicCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          healthCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          medicalCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json(entry, { status: 201 });
+    }
   } catch (error) {
-    console.error("Error creating entry:", error);
+    console.error("Error creating/updating entry:", error);
     if (error instanceof Error) {
       return NextResponse.json(
         { error: error.message },
@@ -174,6 +304,27 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "desc" },
         include: {
           createdBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          demographicCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          healthCreatedBy: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          medicalCreatedBy: {
             select: {
               id: true,
               email: true,

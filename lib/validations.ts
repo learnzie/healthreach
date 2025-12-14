@@ -36,6 +36,56 @@ export const entrySchema = z.object({
     .transform((val) => (val ? parseFloat(val) : null)),
   diagnosis: z.string().optional().nullable(),
   treatment: z.string().optional().nullable(),
+  id: z.string().optional(), // For updating existing entries
+});
+
+// Demographic entry schema (fields 24-32)
+export const demographicEntrySchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  middleName: z.string().min(1, "Middle name is required"),
+  surname: z.string().min(1, "Surname is required"),
+  gender: z.enum(["male", "female"], {
+    message: "Gender must be male or female",
+  }),
+  maritalStatus: z.enum(["single", "married", "divorced", "widowed"], {
+    message: "Marital status must be single, married, divorced or widowed",
+  }),
+  religion: z.string().min(1, "Religion is required"),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+  phoneNumber: z.string().min(1, "Phone number is required"),
+  occupation: z.string().min(1, "Occupation is required"),
+  id: z.string().optional(), // For updating existing entries
+});
+
+// Health entry schema (fields 33-35)
+export const healthEntrySchema = z.object({
+  bp: z.string().optional().nullable(),
+  temp: z
+    .string()
+    .optional()
+    .nullable()
+    .refine(
+      (val) => !val || !isNaN(parseFloat(val)),
+      "Temperature must be a number"
+    )
+    .transform((val) => (val ? parseFloat(val) : null)),
+  weight: z
+    .string()
+    .optional()
+    .nullable()
+    .refine(
+      (val) => !val || !isNaN(parseFloat(val)),
+      "Weight must be a number"
+    )
+    .transform((val) => (val ? parseFloat(val) : null)),
+  id: z.string().optional(), // For updating existing entries
+});
+
+// Medical entry schema (diagnosis and treatment)
+export const medicalEntrySchema = z.object({
+  diagnosis: z.string().optional().nullable(),
+  treatment: z.string().optional().nullable(),
+  id: z.string().optional(), // For updating existing entries
 });
 
 // Entry query parameters schema
@@ -76,9 +126,10 @@ export const authCredentialsSchema = z.object({
 
 // User creation schema
 export const createUserSchema = z.object({
-  email: z.email("Invalid email address"),
+  email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().optional().nullable(),
+  role: z.enum(["admin", "user", "doctor", "nurse"]).default("user"),
 });
 
 // User update schema (password is optional)
@@ -86,6 +137,7 @@ export const updateUserSchema = z.object({
   email: z.string().email("Invalid email address").optional(),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
   name: z.string().optional().nullable(),
+  role: z.enum(["admin", "user", "doctor", "nurse"]).optional(),
 });
 
 // User query parameters schema

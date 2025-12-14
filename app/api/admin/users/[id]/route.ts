@@ -23,6 +23,7 @@ export async function GET(
                 id: true,
                 email: true,
                 name: true,
+                role: true,
                 createdAt: true,
                 updatedAt: true,
                 _count: {
@@ -105,6 +106,7 @@ export async function PUT(
             email?: string;
             password?: string;
             name?: string | null;
+            role?: string;
         } = {};
 
         if (validatedData.email) {
@@ -119,6 +121,10 @@ export async function PUT(
             updateData.name = validatedData.name;
         }
 
+        if (validatedData.role) {
+            updateData.role = validatedData.role;
+        }
+
         // Update user
         const user = await prisma.user.update({
             where: { id },
@@ -127,6 +133,7 @@ export async function PUT(
                 id: true,
                 email: true,
                 name: true,
+                role: true,
                 createdAt: true,
                 updatedAt: true,
             },
@@ -168,6 +175,12 @@ export async function DELETE(
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
+
+        // Only admins can delete users
+        if (session.user.role !== "admin") {
+            return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+        }
+
         const { id } = await params;
 
         // Prevent deleting yourself

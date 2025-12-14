@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "pnpm generate && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "prisma db seed",
@@ -18,7 +18,7 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "lucide-react": "^0.555.0",
-    "next": "16.0.6",
+    "next": "^16.0.8",
     "next-auth": "^4.24.13",
     "pg": "^8.16.3",
     "react": "19.2.0",

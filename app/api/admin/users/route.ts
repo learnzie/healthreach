@@ -13,6 +13,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        // Only admins can create users
+        if (session.user.role !== "admin") {
+            return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+        }
+
         const body = await request.json();
 
         // Validate with Zod
@@ -53,6 +58,7 @@ export async function POST(request: NextRequest) {
                 email: validatedData.email,
                 password: hashedPassword,
                 name: validatedData.name || null,
+                role: validatedData.role || "user",
             },
             select: {
                 id: true,
@@ -92,6 +98,11 @@ export async function GET(request: NextRequest) {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        // Only admins can view users
+        if (session.user.role !== "admin") {
+            return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
         const { searchParams } = new URL(request.url);
@@ -143,6 +154,7 @@ export async function GET(request: NextRequest) {
                     id: true,
                     email: true,
                     name: true,
+                    role: true,
                     createdAt: true,
                     updatedAt: true,
                     _count: {

@@ -10,33 +10,45 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  entries   Entry[]
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  password           String
+  name               String?
+  role               String   @default("user")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  entries            Entry[]  @relation("CreatedEntries")
+  demographicEntries Entry[]  @relation("DemographicEntries")
+  healthEntries      Entry[]  @relation("HealthEntries")
+  medicalEntries     Entry[]  @relation("MedicalEntries")
+
+  @@index([role])
 }
 
 model Entry {
-  id            String   @id @default(cuid())
-  firstName     String
-  middleName    String
-  surname       String
-  gender        String
-  maritalStatus String
-  religion      String
-  dateOfBirth   DateTime
-  phoneNumber   String
-  occupation    String
-  bp            String?
-  temp          Float?
-  weight        Float?
-  diagnosis     String?
-  treatment     String?
-  createdById   String
-  createdBy     User     @relation(fields: [createdById], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  firstName              String
+  middleName             String
+  surname                String
+  gender                 String
+  maritalStatus          String
+  religion               String
+  dateOfBirth            DateTime
+  phoneNumber            String
+  occupation             String
+  bp                     String?
+  temp                   Float?
+  weight                 Float?
+  diagnosis              String?
+  treatment              String?
+  createdById            String
+  createdBy              User     @relation("CreatedEntries", fields: [createdById], references: [id])
+  demographicCreatedById String?
+  demographicCreatedBy   User?    @relation("DemographicEntries", fields: [demographicCreatedById], references: [id])
+  healthCreatedById      String?
+  healthCreatedBy        User?    @relation("HealthEntries", fields: [healthCreatedById], references: [id])
+  medicalCreatedById     String?
+  medicalCreatedBy       User?    @relation("MedicalEntries", fields: [medicalCreatedById], references: [id])
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
